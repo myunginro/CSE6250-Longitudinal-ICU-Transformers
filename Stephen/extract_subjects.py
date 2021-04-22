@@ -59,21 +59,33 @@ stays = merge_on_subject(stays, patients)
 stays_df = stays_df.join(patients_df, on=['SUBJECT_ID'])
 x = stays_df.count()
 stays = filter_admissions_on_nb_icustays(stays)
-# to_keep = stays.groupby('HADM_ID').count()[['ICUSTAY_ID']].reset_index()
-# to_keep = to_keep[(to_keep.ICUSTAY_ID >= min_nb_stays) & (to_keep.ICUSTAY_ID <= max_nb_stays)][['HADM_ID']]
-# stays = stays.merge(to_keep, how='inner', left_on='HADM_ID', right_on='HADM_ID')
 
 to_keep = stays_df.groupby('HADM_ID').\
     agg(psql.count('ICUSTAY_ID').alias('ICUSTAY_ID')).\
     filter("ICUSTAY_ID >= 1 and ICUSTAY_ID <= 1").\
     drop('ICUSTAY_ID')
 stays_df = stays_df.join(to_keep, on='HADM_ID')
-x = stays_df.count()
+# x = stays_df.count()
 if args.verbose:
     print('REMOVE MULTIPLE STAYS PER ADMIT:\n\tICUSTAY_IDs: {}\n\tHADM_IDs: {}\n\tSUBJECT_IDs: {}'.format(stays.ICUSTAY_ID.unique().shape[0],
           stays.HADM_ID.unique().shape[0], stays.SUBJECT_ID.unique().shape[0]))
 
 stays = add_age_to_icustays(stays)
+# stays["INDATE"] = pd.to_datetime(stays["INTIME"].dt.date)
+# stays["DOBDATE"] = pd.to_datetime(stays["DOB"].dt.date)
+# stays['AGE'] = (stays["INDATE"].subtract(stays["DOBDATE"])).dt.days // 365.0
+# # stays['AGE'] = (stays.INTIME - stays.DOB).apply(lambda s: s / np.timedelta64(1, 's')) / 60.0/60.0/24.0/365.0
+# stays.loc[stays.AGE < 0, 'AGE'] = 90
+# stays_df.withColumn("INDATE", stays_df["INTIME"].cast(TimestampType()))
+# stays_df.withColumn("DOBDATE", stays_df["DOB"].cast(TimestampType()))
+# stays_df.withColumn('AGE', stays_df['INDATE'] - stays_df["DOBDATE"])
+stays_df = stays_df.select("*", psql.to_date(stays_df["INTIME"]).alias("INDATE"))
+stays_df = stays_df.select("*", psql.to_date(stays_df["DOB"]).alias("DOBDATE"))#.alias("DOBDATE")
+stays_df = stays_df.select("*", psql.floor((psql.datediff(stays_df['INDATE'], stays_df["DOBDATE"]) / 365.0)).alias("AGE"))
+                           # alias("AGE"))#.alias("AGE")
+print(stays_df.filter("AGE > 250").count())
+stays_df = stays_df.withColumn("AGE", psql.when(stays_df.AGE > 250, 90).otherwise(stays_df.AGE))
+print(stays_df.filter("AGE < 0").count())
 stays = add_inunit_mortality_to_icustays(stays)
 stays = add_inhospital_mortality_to_icustays(stays)
 stays = filter_icustays_on_age(stays)
