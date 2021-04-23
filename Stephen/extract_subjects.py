@@ -71,22 +71,33 @@ if args.verbose:
           stays.HADM_ID.unique().shape[0], stays.SUBJECT_ID.unique().shape[0]))
 
 stays = add_age_to_icustays(stays)
-# stays["INDATE"] = pd.to_datetime(stays["INTIME"].dt.date)
-# stays["DOBDATE"] = pd.to_datetime(stays["DOB"].dt.date)
-# stays['AGE'] = (stays["INDATE"].subtract(stays["DOBDATE"])).dt.days // 365.0
-# # stays['AGE'] = (stays.INTIME - stays.DOB).apply(lambda s: s / np.timedelta64(1, 's')) / 60.0/60.0/24.0/365.0
-# stays.loc[stays.AGE < 0, 'AGE'] = 90
-# stays_df.withColumn("INDATE", stays_df["INTIME"].cast(TimestampType()))
-# stays_df.withColumn("DOBDATE", stays_df["DOB"].cast(TimestampType()))
+
 # stays_df.withColumn('AGE', stays_df['INDATE'] - stays_df["DOBDATE"])
 stays_df = stays_df.select("*", psql.to_date(stays_df["INTIME"]).alias("INDATE"))
 stays_df = stays_df.select("*", psql.to_date(stays_df["DOB"]).alias("DOBDATE"))#.alias("DOBDATE")
 stays_df = stays_df.select("*", psql.floor((psql.datediff(stays_df['INDATE'], stays_df["DOBDATE"]) / 365.0)).alias("AGE"))
                            # alias("AGE"))#.alias("AGE")
-print(stays_df.filter("AGE > 250").count())
+# print(stays_df.filter("AGE > 250").count())
 stays_df = stays_df.withColumn("AGE", psql.when(stays_df.AGE > 250, 90).otherwise(stays_df.AGE))
-print(stays_df.filter("AGE < 0").count())
+# print(stays_df.filter("AGE < 0").count())
+
 stays = add_inunit_mortality_to_icustays(stays)
+
+#add_inunit_mortality_to_icustays below
+mortality = stays_df.withColumn("DODFILTER", (stays_df.INTIME <= stays_df.DOD) & (stays_df.OUTTIME >= stays_df.DOD))
+print(mortality.filter("DODFILTER = true").count())
+mortality = mortality.withColumn("DEATHTIMEFILTER", (stays_df.ADMITTIME <= stays_df.DEATHTIME) & (stays_df.ADMITTIME >= stays_df.DEATHTIME))
+mortality = mortality.withColumn("MORTALITY_INHOSPITAL", mortality.DODFILTER | mortality.DEATHTIMEFILTER)
+mortality = mortality.withColumn("MORTALITY", mortality.MORTALITY_INHOSPITAL.cast('int'))
+mortality = mortality.filter("MORTALITY_INHOSPITAL IS NOT NULL")
+
+print(mortality.show())
+# print(mortality.filter("TEST2 = true").count())
+# print(test2.show())
+
+# mortality = mortality.rdd
+# print(mortality.count())
+# mortality = mortality.map(lambda x: x.ADMITTIME <= x.DEATHTIME & x.OUTTIME >= stays.DEATHTIME)
 stays = add_inhospital_mortality_to_icustays(stays)
 stays = filter_icustays_on_age(stays)
 if args.verbose:
