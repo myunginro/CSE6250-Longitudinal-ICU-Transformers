@@ -15,7 +15,7 @@ from mimic3models import metrics
 from mimic3models import keras_utils
 from mimic3models import common_utils
 
-from keras.callbacks import ModelCheckpoint, CSVLogger
+from keras.callbacks import ModelCheckpoint, CSVLogger, EarlyStopping
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
@@ -37,8 +37,8 @@ target_repl = (args.target_repl_coef > 0.0 and args.mode == 'train')
 
 
 
-maxlen = 48*76
-vocab_size = 48*76
+maxlen = 48*76 
+vocab_size = 48*76 
 
 # Build transformer model
 class TransformerBlock(layers.Layer):
@@ -92,10 +92,11 @@ x = layers.Dropout(0.1)(x)
 outputs = layers.Dense(1, activation="sigmoid")(x)
 
 model = keras.Model(inputs=inputs, outputs=outputs)
-model.compile("adam", 'binary_crossentropy', metrics=["accuracy"])
+model.compile("adam", 'binary_crossentropy', metrics=["AUC"])
 print(model.summary())
 
-'''
+
+
 # Build readers, discretizers, normalizers
 train_reader = InHospitalMortalityReader(dataset_dir=os.path.join(args.data, 'train'),
                                          listfile=os.path.join(args.data, 'train_listfile.csv'),
@@ -105,6 +106,11 @@ val_reader = InHospitalMortalityReader(dataset_dir=os.path.join(args.data, 'trai
                                        listfile=os.path.join(args.data, 'val_listfile.csv'),
                                        period_length=48.0)
 
+
+test_reader = InHospitalMortalityReader(dataset_dir=os.path.join(args.data, 'test'),
+                                            listfile=os.path.join(args.data, 'test_listfile.csv'),
+                                            period_length=48.0)
+    
 discretizer = Discretizer(timestep=float(args.timestep),
                           store_masks=True,
                           impute_strategy='previous',
@@ -126,160 +132,87 @@ args_dict['task'] = 'ihm'
 args_dict['target_repl'] = target_repl
 #print(args_dict)
 
-# Read data
-train_raw = utils.load_data(train_reader, discretizer, normalizer, args.small_part)
-val_raw = utils.load_data(val_reader, discretizer, normalizer, args.small_part)
 
-if target_repl:
-    T = train_raw[0][0].shape[0]
-
-    def extend_labels(data):
-        data = list(data)
-        labels = np.array(data[1])  # (B,)
-        data[1] = [labels, None]
-        data[1][1] = np.expand_dims(labels, axis=-1).repeat(T, axis=1)  # (B, T)
-        data[1][1] = np.expand_dims(data[1][1], axis=-1)  # (B, T, 1)
-        return data
-
-    train_raw = extend_labels(train_raw)
-    val_raw = extend_labels(val_raw)
-
-Xtrain = np.array(train_raw[0]).reshape((-1, 48*76))
-Ytrain = np.array(train_raw[1]).reshape((-1,1))
-Xval = np.array(val_raw[0]).reshape((-1, 48*76))
-Yval = np.array(val_raw[1]).reshape((-1,1))
-
-with open('train.npy',"wb") as f:
-    np.save(f,Xtrain)
-    np.save(f,Ytrain)
-
-with open('val.npy',"wb") as f:
-    np.save(f,Xval)
-    np.save(f,Yval)
-
-'''
-
-with open('train.npy',"rb") as f:
-    Xtrain = np.load(f)
-    Ytrain = np.load(f)
-
-with open('val.npy',"rb") as f:
-    Xval = np.load(f)
-    Yval = np.load(f)
-
-print(Xtrain.shape)
-print(Ytrain.shape)
-print(Xval.shape)
-print(Yval.shape)
-print(Xtrain)
-
-
-history = model.fit(
-    Xtrain, Ytrain, batch_size=32, epochs=2, validation_data=(Xval, Yval)
-)
-
-'''
-# Build the model
-print("==> using model {}".format(args.network))
-model_module = imp.load_source(os.path.basename(args.network), args.network)
-model = model_module.Network(**args_dict)
-suffix = ".bs{}{}{}.ts{}{}".format(args.batch_size,
-                                   ".L1{}".format(args.l1) if args.l1 > 0 else "",
-                                   ".L2{}".format(args.l2) if args.l2 > 0 else "",
-                                   args.timestep,
-                                   ".trc{}".format(args.target_repl_coef) if args.target_repl_coef > 0 else "")
-model.final_name = args.prefix + model.say_name() + suffix
-print("==> model.final_name:", model.final_name)
-
-
-# Compile the model
-print("==> compiling the model")
-optimizer_config = {'class_name': args.optimizer,
-                    'config': {'lr': args.lr,
-                               'beta_1': args.beta_1}}
-
-# NOTE: one can use binary_crossentropy even for (B, T, C) shape.
-#       It will calculate binary_crossentropies for each class
-#       and then take the mean over axis=-1. Tre results is (B, T).
-if target_repl:
-    loss = ['binary_crossentropy'] * 2
-    loss_weights = [1 - args.target_repl_coef, args.target_repl_coef]
-else:
-    loss = 'binary_crossentropy'
-    loss_weights = None
-
-model.compile(optimizer=optimizer_config,
-              loss=loss,
-              loss_weights=loss_weights)
-model.summary()
-
-# Load model weights
-n_trained_chunks = 0
-if args.load_state != "":
-    model.load_weights(args.load_state)
-    n_trained_chunks = int(re.match(".*epoch([0-9]+).*", args.load_state).group(1))
-'''
-
-
-'''
 if args.mode == 'train':
+    
+    # Read data
+    train_raw = utils.load_data(train_reader, discretizer, normalizer, args.small_part)
+    val_raw = utils.load_data(val_reader, discretizer, normalizer, args.small_part)
 
-    # Prepare training
-    #path = os.path.join(args.output_dir, 'keras_states/' + model.final_name + '.epoch{epoch}.test{val_loss}.state')
+    if target_repl:
+        T = train_raw[0][0].shape[0]
 
-    metrics_callback = keras_utils.InHospitalMortalityMetrics(train_data=train_raw,
-                                                              val_data=val_raw,
-                                                              target_repl=(args.target_repl_coef > 0),
-                                                              batch_size=args.batch_size,
-                                                              verbose=args.verbose)
-    # make sure save directory exists
-    dirname = os.path.dirname(path)
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
-    saver = ModelCheckpoint(path, verbose=1, period=args.save_every)
+        def extend_labels(data):
+            data = list(data)
+            labels = np.array(data[1])  # (B,)
+            data[1] = [labels, None]
+            data[1][1] = np.expand_dims(labels, axis=-1).repeat(T, axis=1)  # (B, T)
+            data[1][1] = np.expand_dims(data[1][1], axis=-1)  # (B, T, 1)
+            return data
 
-    keras_logs = os.path.join(args.output_dir, 'keras_logs')
+        train_raw = extend_labels(train_raw)
+        val_raw = extend_labels(val_raw)
+
+    Xtrain = np.array(train_raw[0]).reshape((-1, 48*76))
+    Ytrain = np.array(train_raw[1]).reshape((-1,1))
+    Xval = np.array(val_raw[0]).reshape((-1, 48*76))
+    Yval = np.array(val_raw[1]).reshape((-1,1))
+
+    with open('train.npy',"wb") as f:
+        np.save(f,Xtrain)
+        np.save(f,Ytrain)
+
+    with open('val.npy',"wb") as f:
+        np.save(f,Xval)
+        np.save(f,Yval)
+    
+      
+    with open('train.npy',"rb") as f:
+        Xtrain = np.load(f)
+        Ytrain = np.load(f)
+
+    with open('val.npy',"rb") as f:
+        Xval = np.load(f)
+        Yval = np.load(f)
+
+    keras_logs = os.path.join(args.output_dir, 'mimic3models/in_hospital_mortality/keras_logs')
     if not os.path.exists(keras_logs):
         os.makedirs(keras_logs)
-    csv_logger = CSVLogger(os.path.join(keras_logs, model.final_name + '.csv'),
+    csv_logger = CSVLogger(os.path.join(keras_logs, 'transformer.csv'),
                            append=True, separator=';')
 
-    print("==> training")
-    model.fit(x=train_raw[0],
-              y=train_raw[1],
-              validation_data=val_raw,
-              epochs=n_trained_chunks + args.epochs,
-              initial_epoch=n_trained_chunks,
-              callbacks=[metrics_callback, saver, csv_logger],
-              shuffle=True,
-              verbose=args.verbose,
-              batch_size=args.batch_size)
+    filepath = os.path.join(args.output_dir, 'mimic3models/in_hospital_mortality/keras_states/transformer_best.state')
+    earlyStopping = EarlyStopping(monitor='val_auc', patience=10, verbose=1, mode='max')
+    checkpoint = ModelCheckpoint(filepath, monitor='val_auc', verbose=1,save_best_only=True, mode='max')
+    callbacks_list = [earlyStopping, checkpoint, csv_logger]
+
+    model.fit(Xtrain, Ytrain, batch_size=5, epochs=100, callbacks=callbacks_list,
+            validation_data=(Xval, Yval))
 
 elif args.mode == 'test':
-
-    # ensure that the code uses test_reader
-    del train_reader
-    del val_reader
-    del train_raw
-    del val_raw
-
-    test_reader = InHospitalMortalityReader(dataset_dir=os.path.join(args.data, 'test'),
-                                            listfile=os.path.join(args.data, 'test_listfile.csv'),
-                                            period_length=48.0)
     ret = utils.load_data(test_reader, discretizer, normalizer, args.small_part,
-                          return_names=True)
+                        return_names=True)
+    test_raw = ret['data']
+    test_names = ret['names']
+    
+    Xtest = np.array(test_raw[0]).reshape((-1, 48*76))
+    Ytest = np.array(test_raw[1]).reshape((-1,1))
 
-    data = ret["data"][0]
-    labels = ret["data"][1]
-    names = ret["names"]
+    model = keras.models.load_model(os.path.join(args.output_dir, 'mimic3models/in_hospital_mortality/keras_states/transformer_best.state'))
 
-    predictions = model.predict(data, batch_size=args.batch_size, verbose=1)
+
+    print(Xtest[3051, 1266])   
+    print(np.mean(Xtest,0)[1266])
+    Xtest = np.delete(Xtest, 3051, 0) # large feature value for sequence 3051, event 1266, likely outlier
+    Ytest = np.delete(Ytest, 3051, 0) # same as above
+    print(np.mean(Xtest,0)[1266])
+
+    predictions = model.predict(Xtest, batch_size=1, verbose=1)
     predictions = np.array(predictions)[:, 0]
-    metrics.print_metrics_binary(labels, predictions)
+    metrics.print_metrics_binary(Ytest, predictions)
 
-    path = os.path.join(args.output_dir, "test_predictions", os.path.basename(args.load_state)) + ".csv"
-    utils.save_results(names, predictions, labels, path)
+    path = os.path.join(args.output_dir, "test_predictions.csv")
+    utils.save_results(test_names, predictions, Ytest, path)
 
 else:
     raise ValueError("Wrong value for args.mode")
-'''
