@@ -85,20 +85,22 @@ stays = add_inunit_mortality_to_icustays(stays)
 
 #add_inunit_mortality_to_icustays below
 mortality = stays_df.withColumn("DODFILTER", (stays_df.INTIME <= stays_df.DOD) & (stays_df.OUTTIME >= stays_df.DOD))
-print(mortality.filter("DODFILTER = true").count())
-mortality = mortality.withColumn("DEATHTIMEFILTER", (stays_df.ADMITTIME <= stays_df.DEATHTIME) & (stays_df.ADMITTIME >= stays_df.DEATHTIME))
-mortality = mortality.withColumn("MORTALITY_INHOSPITAL", mortality.DODFILTER | mortality.DEATHTIMEFILTER)
-mortality = mortality.withColumn("MORTALITY", mortality.MORTALITY_INHOSPITAL.cast('int'))
-mortality = mortality.filter("MORTALITY_INHOSPITAL IS NOT NULL")
+# print(mortality.filter("DODFILTER = true").count())
+mortality = mortality.withColumn("DEATHTIMEFILTER", (stays_df.INTIME <= stays_df.DEATHTIME) & (stays_df.OUTTIME >= stays_df.DEATHTIME))
+mortality = mortality.withColumn("MORTALITY_InUnit", mortality.DODFILTER | mortality.DEATHTIMEFILTER)
+# mortality = mortality.withColumn("MORTALITY", mortality.MORTALITY_InUnit.cast('int'))
+stays_df = mortality.withColumn("MORTALITY_InUnit", mortality.MORTALITY_InUnit.cast('int'))
 
-print(mortality.show())
-# print(mortality.filter("TEST2 = true").count())
-# print(test2.show())
 
-# mortality = mortality.rdd
-# print(mortality.count())
-# mortality = mortality.map(lambda x: x.ADMITTIME <= x.DEATHTIME & x.OUTTIME >= stays.DEATHTIME)
 stays = add_inhospital_mortality_to_icustays(stays)
+#add_inhospital_mortality_to_icustays below
+mortality_inhospital = stays_df.withColumn("InHospitalDODFilter", (stays_df.ADMITTIME <= stays_df.DOD) & (stays_df.DISCHTIME >= stays_df.DOD))
+
+mortality_inhospital = mortality_inhospital.withColumn("InHospitalDEATHTIMEFILTER", (stays_df.ADMITTIME <= stays_df.DEATHTIME) & (stays_df.DISCHTIME >= stays_df.DEATHTIME))
+mortality_inhospital = mortality_inhospital.withColumn("MORTALITY_InHospital", mortality_inhospital.InHospitalDODFilter | mortality_inhospital.InHospitalDEATHTIMEFILTER)
+mortality_inhospital = mortality_inhospital.withColumn("MORTALITY", mortality_inhospital.MORTALITY_InHospital.cast('int'))
+stays_df = mortality_inhospital.withColumn("MORTALITY_InHospital", mortality_inhospital.MORTALITY_InHospital.cast('int'))
+
 stays = filter_icustays_on_age(stays)
 if args.verbose:
     print('REMOVE PATIENTS AGE < 18:\n\tICUSTAY_IDs: {}\n\tHADM_IDs: {}\n\tSUBJECT_IDs: {}'.format(stays.ICUSTAY_ID.unique().shape[0],
