@@ -102,6 +102,8 @@ mortality_inhospital = mortality_inhospital.withColumn("MORTALITY", mortality_in
 stays_df = mortality_inhospital.withColumn("MORTALITY_InHospital", mortality_inhospital.MORTALITY_InHospital.cast('int'))
 
 stays = filter_icustays_on_age(stays)
+#filter_icustays_on_age below
+stays_df = stays_df.filter("AGE >= 18")
 if args.verbose:
     print('REMOVE PATIENTS AGE < 18:\n\tICUSTAY_IDs: {}\n\tHADM_IDs: {}\n\tSUBJECT_IDs: {}'.format(stays.ICUSTAY_ID.unique().shape[0],
           stays.HADM_ID.unique().shape[0], stays.SUBJECT_ID.unique().shape[0]))
