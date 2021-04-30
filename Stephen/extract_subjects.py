@@ -3,12 +3,14 @@ from __future__ import print_function
 
 import argparse
 import yaml
+import time
 
 from mimic3benchmark.mimic3csv import *
 from mimic3benchmark.preprocessing import add_hcup_ccs_2015_groups, make_phenotype_label_matrix
 from mimic3benchmark.util import dataframe_from_csv
 from pyspark import SparkContext, SQLContext
 import pyspark.sql.functions as psql
+from pyspark.sql import SparkSession
 
 parser = argparse.ArgumentParser(description='Extract per-subject data from MIMIC-III CSV files.')
 parser.add_argument('mimic3_path', type=str, help='Directory containing MIMIC-III CSV files.')
@@ -32,6 +34,10 @@ except:
 
 sc = SparkContext(appName="extract_subjects")
 sqlContext = SQLContext(sc)
+spark = SparkSession \
+    .builder \
+    .appName("Extract Subjects") \
+    .getOrCreate()
 patients = read_patients_table(args.mimic3_path)
 admits = read_admissions_table(args.mimic3_path)
 stays = read_icustays_table(args.mimic3_path)
@@ -110,13 +116,23 @@ if args.verbose:
 
 # stays.to_csv(os.path.join(args.output_path, 'all_stays.csv'), index=False)
 diagnoses = read_icd_diagnoses_table(args.mimic3_path)
+diagnoses_df = read_icd_diagnoses_table_df(args.mimic3_path, sqlContext)
 diagnoses = filter_diagnoses_on_stays(diagnoses, stays)
+diagnoses_df = filter_diagnoses_on_stays_df(diagnoses_df, stays_df)
 # diagnoses.to_csv(os.path.join(args.output_path, 'all_diagnoses.csv'), index=False)
-count_icd_codes(diagnoses, output_path=os.path.join(args.output_path, 'diagnosis_counts.csv'))
+codes_df = count_icd_codes(diagnoses, output_path=os.path.join(args.output_path, 'diagnosis_counts.csv'))
+# codes_df = count_icd_codes_df(diagnoses_df, output_path=os.path.join(args.output_path, 'diagnosis_counts.csv'))
 #
 phenotypes = add_hcup_ccs_2015_groups(diagnoses, yaml.load(open(args.phenotype_definitions, 'r')))
-make_phenotype_label_matrix(phenotypes, stays).to_csv(os.path.join(args.output_path, 'phenotype_labels.csv'),
-                                                      index=False, quoting=csv.QUOTE_NONNUMERIC)
+# phenotypes_df = add_hcup_ccs_2015_groups(diagnoses, yaml.load(open(args.phenotype_definitions, 'r')))
+# phenotypes_df = spark.createDataFrame(phenotypes_df)
+# make_phenotype_label_matrix(phenotypes, stays).to_csv(os.path.join(args.output_path, 'phenotype_labels.csv'),
+#                                                       index=False, quoting=csv.QUOTE_NONNUMERIC)
+phenotypes_label_df = make_phenotype_label_matrix(phenotypes, stays)
+phenotypes_df = spark.createDataFrame(phenotypes)
+diagnoses_df = spark.createDataFrame(diagnoses)
+codes_df = spark.createDataFrame(codes_df)
+# stays_df = spark.createDataFrame(stays)
 #
 # if args.test:
 #     pat_idx = np.random.choice(patients.shape[0], size=1000)
@@ -125,11 +141,37 @@ make_phenotype_label_matrix(phenotypes, stays).to_csv(os.path.join(args.output_p
 #     args.event_tables = [args.event_tables[0]]
 #     print('Using only', stays.shape[0], 'stays and only', args.event_tables[0], 'table')
 
+
+
+
+
 subjects = stays.SUBJECT_ID.unique()
-# break_up_stays_by_subject(stays, args.output_path, subjects=subjects)
+
+start = time.time()
+stays_break_df = break_up_stays_by_subject_df(stays_df, args.output_path, subjects=stays_df)
+end = time.time()
+print("Pyspark break up stays by subject", end - start)
+
+start = time.time()
+break_up_stays_by_subject(stays, args.output_path, subjects=subjects)
+end = time.time()
+print("Non-Pyspark break up stays by subject", end - start)
+
+start = time.time()
+break_up_diagnoses_by_subject_df(phenotypes_df, args.output_path, subjects=stays_df.drop_duplicates(['SUBJECT_ID']))
+end = time.time()
+print("Pyspark break up diagnoses by subject", end - start)
+
+start = time.time()
 break_up_diagnoses_by_subject(phenotypes, args.output_path, subjects=subjects)
+end = time.time()
+print("Non-Pyspark break up diagnoses by subject", end - start)
+
 items_to_keep = set(
     [int(itemid) for itemid in dataframe_from_csv(args.itemids_file)['ITEMID'].unique()]) if args.itemids_file else None
+# for table in args.event_tables:
+#     read_events_table_and_break_up_by_subject(args.mimic3_path, table, args.output_path, items_to_keep=items_to_keep,
+#                                               subjects_to_keep=subjects)
 for table in args.event_tables:
-    read_events_table_and_break_up_by_subject(args.mimic3_path, table, args.output_path, items_to_keep=items_to_keep,
+    pySpark_read_events_table_and_break_up_by_subject(args.mimic3_path, table, args.output_path, items_to_keep=items_to_keep,
                                               subjects_to_keep=subjects)
