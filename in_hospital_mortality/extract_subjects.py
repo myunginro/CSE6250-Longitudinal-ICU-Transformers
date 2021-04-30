@@ -167,11 +167,11 @@ break_up_diagnoses_by_subject(phenotypes, args.output_path, subjects=subjects)
 end = time.time()
 print("Non-Pyspark break up diagnoses by subject", end - start)
 
-items_to_keep = set(
-    [int(itemid) for itemid in dataframe_from_csv(args.itemids_file)['ITEMID'].unique()]) if args.itemids_file else None
-# for table in args.event_tables:
-#     read_events_table_and_break_up_by_subject(args.mimic3_path, table, args.output_path, items_to_keep=items_to_keep,
-#                                               subjects_to_keep=subjects)
+items_to_keep = None
+stays = pd.read_csv(os.path.join(args.output_path, 'all_stays.csv'))
+subjects = stays.SUBJECT_ID.unique()
+#print(subjects)
+
 for table in args.event_tables:
     pySpark_read_events_table_and_break_up_by_subject(args.mimic3_path, table, args.output_path, items_to_keep=items_to_keep,
                                               subjects_to_keep=subjects)
