@@ -33,8 +33,10 @@ Process emulates the same feature selection and filtering that was used in the b
        python -m mimic3benchmark.scripts.create_in_hospital_mortality data/root/ data/in-hospital-mortality/
        
 ## Train / validation split
+       
        python -m mimic3models.split_train_val {dataset-directory}
 
 ## Training
 cd into your root folder, and run the following:
+       
        python -um mimic3models.in_hospital_mortality.main --network 0
