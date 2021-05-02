@@ -1,10 +1,19 @@
 # CSE6250-Longitudinal-ICU-Transformers
 
-https://github.com/YerevaNN/mimic3-benchmarks
+Banchmark reference: https://github.com/YerevaNN/mimic3-benchmarks
 
 
 ## Overview
 Python suite to construct features and classification model for in-hospital mortality from the MIMIC-III clinical database.
+
+
+## Requirements
+Access to the MIMIC-III dataset is required, https://mimic.physionet.org/. Download the CSVs
+
+- Numpy
+- Pandas
+- PySpark
+- Keras
 
 ## ETL
 1. put the main.py inside "<your-path>\CSE6250-Longitudinal-ICU-Transformers\<your-name>\mimic3models\in_hospital_mortality"
@@ -16,6 +25,3 @@ Python suite to construct features and classification model for in-hospital mort
 
 
 ## Validation
-
-
-## References
