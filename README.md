@@ -25,6 +25,7 @@ Clone the benchmark reference repo, extract MIMIC-III dataset into the /data/ fo
 
 ## ETL
 Process emulates the same feature selection and filtering that was used in the benchmark study, but with steps implemented in PySpark rather than in pure Pandas. The following steps will generate a processed dataset ready for training models:
+
        python -m mimic3benchmark.scripts.extract_subjects {PATH TO MIMIC-III CSVs} data/root/
        python -m mimic3benchmark.scripts.validate_events data/root/
        python -m mimic3benchmark.scripts.extract_episodes_from_subjects data/root/
@@ -36,4 +37,4 @@ Process emulates the same feature selection and filtering that was used in the b
 
 ## Training
 cd into your root folder, and run the following:
-       python -um mimic3models.in_hospital_mortality.main --network <whatever>
+       python -um mimic3models.in_hospital_mortality.main --network 0
