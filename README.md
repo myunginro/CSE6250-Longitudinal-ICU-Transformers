@@ -30,6 +30,4 @@ Clone the benchmark reference repo, extract MIMIC-III dataset into the /data/ fo
 
 
 ## Training
-
-
-## Validation
+       python -um mimic3models.in_hospital_mortality.main --network <whatever>
